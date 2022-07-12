@@ -1,142 +1,106 @@
-%% Fast, efficient approximation for SWE.
-
-
-clear all
-clc
-
-%% This is my first cell, create constants, and grid. 
-%Constants
-g=9.81; % units of gravity are m/s^2
-
-
-%Grid length, number and spacing
-Lx=200;
-Ly=200;
-nx=201;
-ny=201;
-
-dx=Lx/(nx-1);
-dy=Ly/(ny-1);
-% set up finite-difference mesh or grid:
-
-
-
-[x y] = meshgrid(linspace(0,Lx,nx),linspace(0,Ly,ny));
-
-whos
-
-%plot(x,y, 'r.')  %plot shows resolution of Grid.
-
-%% Spaces para las etas.
-
-
-eta=zeros(nx,ny);  up=zeros(nx,ny);  vp=zeros(nx,ny);
-etam=zeros(nx,ny);  u=zeros(nx,ny);   v=zeros(nx,ny);   
-etap=zeros(nx,ny); um=zeros(nx,ny);  vm=zeros(nx,ny);
-
-
-
-
-
-
-%% Initial condition. etam at t=0.
-
-%Move the initial column of water around by changing io and jo. 
-%k will change the width of the column
-io=40;
-jo=40;
-mo=150;
-no=120;
-k=20;
-
-%initial setup
-for i=1:nx 
-   for j=1:ny
-       h1=3*exp((-((i-io)^2 + (j-jo)^2))/(k^2));
-       h2=3*exp((-((i-mo)^2 + (j-no)^2))/(k^2));
-       if (h1>h2)
-           etam(i,j)=h1;
-       else
-           etam(i,j)=h2;
-       end
-           
-       
-   end
-end
-
-
-eta=etam;
-%this is what your initial condition looks like...
-surf(x,y,eta)
-%%  Move thru time.  Make plots.
-dt=.5;
-Nsteps=500;
-
-
-
-for n=1:Nsteps
-    t=n*dt;
-
-
-    
-    for i=2:nx-1
-        for j=2:ny-1
-    up(i,j)=um(i,j)-g*(dt/dx)*(eta(i+1,j)-eta(i-1,j));
-    vp(i,j)=vm(i,j)-g*(dt/dy)*(eta(i,j+1)-eta(i,j-1));
-    
-    etap(i,j)=2*eta(i,j)-etam(i,j)+(((2*dt^2/dx*dy))*...
-            (eta(i+1,j)+eta(i-1,j)+eta(i,j+1)+eta(i,j-1)-4*eta(i,j)));
-
-        end
-    end
-    
-
-
- etam=eta;
- eta=etap;
+clf;
+clear all;
+%% define the grid size
+n = 100;
+dt = 0.01;
+dx = 1;
+dy = 1;
+g = 9.8;
  
+H = ones(n+2,n+2); % displacement matrix (this is what gets drawn)
+U = zeros(n+2,n+2); % x velocity
 
-%% reflective boundaries  
-eta(:,1) = eta(:,2);      up(:,1) = up(:,2);       vp(:,1) = -vp(:,2);
-eta(:,ny) = eta(:,ny-1);  up(:,ny) = up(:,ny-1);   vp(:,ny) = -vp(:,ny-1);
-eta(1,:) = eta(2,:);      up(1,:) = -up(2,:);      vp(1,:) = vp(2,:);
-eta(nx,:) = eta(nx-1,:);  up(nx,:) = -up(nx-1,:);  vp(nx,:) = vp(nx-1,:);
+V = zeros(n+2,n+2); % y velocity
+
+%% draw the mesh
+grid = surf(H);
+axis([1 n 1 n 1 3]);
+hold all;
+% create initial displacement
+[x,y] = meshgrid( linspace(-3,3,10) );
+R = sqrt(x.^2 + y.^2) + eps;
+Z = (sin(R)./R);
+Z = max(Z,0);
+% add displacement to the height matrix
+w = size(Z,1);
+i = 10:w+9;
 
 
+
+j = 20:w+19;
+H(i,j) = H(i,j) + Z;
+
+%% empty matrix for half-step calculations
+Hx = zeros(n+1,n+1); 
+Hy = zeros(n+1,n+1);
+Ux = zeros(n+1,n+1); 
+Uy = zeros(n+1,n+1);
+Vx = zeros(n+1,n+1);
+Vy = zeros(n+1,n+1);
  
- %% draw figure
-f = figure(1);
-f.Position = [100 100 1280 720];
+while 1==1
+ 
+ % redraw the mesh
+ set(grid, 'zdata', H);
+ drawnow
+ % blending the edges keeps the function stable
+ H(:,1) = H(:,2); 
+ H(:,n+2) = H(:,n+1); 
+ H(1,:) = H(2,:); 
+ H(n+2,:) = H(n+1,:); 
+ 
+ % reverse direction at the x edges
+ U(1,:) = -U(2,:);
+ U(n+2,:) = -U(n+1,:);
+ 
+ % reverse direction at the y edges
+ V(:,1) = -V(:,2);
+ V(:,n+2) = -V(:,n+1);
+ 
+ 
+ % First half step
+ i = 1:n+1;
+ j = 1:n+1;
+ 
+ % height
+ Hx(i,j) = (H(i+1,j+1)+H(i,j+1))/2 - dt/(2*dx)*(U(i+1,j+1)-U(i,j+1)); 
+ Hy(i,j) = (H(i+1,j+1)+H(i+1,j))/2 - dt/(2*dy)*(V(i+1,j+1)-V(i+1,j));
+ 
+ % x momentum
 
-
-subplot(1,2,1)
-z=etap;
-surf(x,y,eta)
-
-colormap('Gray')
-zlim([-5 5])
-shading interp
-
-zlabel('H +/- \eta')
-
-subplot(1,2,2)
-surf(x,y,eta)
-
-view(0,90)
-shading flat
-
-xlabel('Width (m)')
-ylabel('Width (m)')
-
-
-
+ Ux(i,j) = (U(i+1,j+1)+U(i,j+1))/2 - ...
+ dt/(2*dx)*( U(i+1,j+1).^2./H(i+1,j+1) - U(i,j+1).^2./H(i,j+1) + ...
+ g/2*H(i+1,j+1).^2 - g/2*H(i,j+1).^2 ...
+ );
+ 
+ Uy(i,j) = (U(i+1,j+1)+U(i+1,j))/2 - ...
+ dt/(2*dy)*( (V(i+1,j+1).*U(i+1,j+1)./H(i+1,j+1)) - (V(i+1,j).*U(i+1,j)./H(i+1,j)) );
+ 
+ % y momentum
+ Vx(i,j) = (V(i+1,j+1)+V(i,j+1))/2 - ...
+ dt/(2*dx)*((U(i+1,j+1).*V(i+1,j+1)./H(i+1,j+1)) - ...
+ (U(i,j+1).*V(i,j+1)./H(i,j+1)));
+ 
+ Vy(i,j) = (V(i+1,j+1)+V(i+1,j))/2 - ...
+ dt/(2*dy)*((V(i+1,j+1).^2./H(i+1,j+1) + g/2*H(i+1,j+1).^2) - ...
+ (V(i+1,j).^2./H(i+1,j) + g/2*H(i+1,j).^2));
+ 
+ % Second half step
+ i = 2:n+1;
+ j = 2:n+1;
+ 
+ % height
+ H(i,j) = H(i,j) - (dt/dx)*(Ux(i,j-1)-Ux(i-1,j-1)) - ...
+ (dt/dy)*(Vy(i-1,j)-Vy(i-1,j-1));
+ % x momentum
+ U(i,j) = U(i,j) - (dt/dx)*((Ux(i,j-1).^2./Hx(i,j-1) + g/2*Hx(i,j-1).^2) - ...
+ (Ux(i-1,j-1).^2./Hx(i-1,j-1) + g/2*Hx(i-1,j-1).^2)) ...
+ - (dt/dy)*((Vy(i-1,j).*Uy(i-1,j)./Hy(i-1,j)) - ...
+ (Vy(i-1,j-1).*Uy(i-1,j-1)./Hy(i-1,j-1)));
+ % y momentum
+ V(i,j) = V(i,j) - (dt/dx)*((Ux(i,j-1).*Vx(i,j-1)./Hx(i,j-1)) - ...
+ (Ux(i-1,j-1).*Vx(i-1,j-1)./Hx(i-1,j-1))) ...
+ - (dt/dy)*((Vy(i-1,j).^2./Hy(i-1,j) + g/2*Hy(i-1,j).^2) - ...
+ (Vy(i-1,j-1).^2./Hy(i-1,j-1) + g/2*Hy(i-1,j-1).^2));
+ 
 end
-
-
-
-
-
-
-
-
-
